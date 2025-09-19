@@ -6,7 +6,7 @@ This solution demonstrates a secure pattern for ISV (Independent Software Vendor
 
 The architecture diagram below shows how the solution works with the CloudFormation templates. Below the diagram is a numbered list corresponding to the diagram to explain the solution flow.
 
-[image]
+![Architecture Diagram](architecture.png)
 
 1. ISV develops technical solution which is run as an application on EC2.
 2. Receiving a CloudFormation template, the customer deploys the solution and configures secrets and other parameters needed for integration with their existing resources in isolation from the ISV.
@@ -65,7 +65,7 @@ Follow the detailed instructions in each epic file:
 
 This solution demonstrates several security best practices:
 
-1. **Credential Isolation** - The ISV solution never directly handles database credentials
+1. **Credential Isolation** - The ISV solution developers never directly handle database credentials
 2. **Least Privilege Access** - IAM roles are configured with minimal permissions
 3. **Secure Storage** - Sensitive information is stored in AWS Secrets Manager
 4. **Runtime Secret Retrieval** - Credentials are retrieved at runtime, not stored in code
