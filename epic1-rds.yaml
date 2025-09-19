@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Customer Environment Setup - MySQL RDS Database for ISV Integration. Template is designed for deployment in US regions.'
+
+Metadata:
+  cfn_nag:
+    rules_to_suppress:
+      - id: F24
+        reason: "This is a demo environment. In a production environment, you should use Secrets Manager or SSM Parameter Store."
+      - id: F80
+        reason: "This is a demo environment. In a production environment, you should enable deletion protection."
+      - id: F1000
+        reason: "This is a demo environment. In a production environment, you should explicitly define egress rules."
+
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - PrivateSubnetIds
+      - Label:
+          default: "Database Configuration"
+        Parameters:
+          - DBName
+          - DBUsername
+          - DBPassword
+    ParameterLabels:
+      VpcId:
+        default: "Which VPC should this be deployed to?"
+      PrivateSubnetIds:
+        default: "Select two private subnets from the VPC you chose for RDS deployment"
+      DBName:
+        default: "Database Name"
+      DBUsername:
+        default: "Database Username"
+      DBPassword:
+        default: "Database Password"
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Select a VPC that has both public and private subnets
+    
+  PrivateSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Select at least two private subnets in different Availability Zones from the VPC selected above
+
+  DBName:
+    Type: String
+    Default: demodb
+    Description: Name for the MySQL database
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters
+
+  DBUsername:
+    Type: String
+    NoEcho: true
+    Description: Username for MySQL database access
+    MinLength: 1
+    MaxLength: 16
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: Password for MySQL database access
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: Must contain only alphanumeric characters
+
+Resources:
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for MySQL RDS
+      SubnetIds: !Ref PrivateSubnetIds
+
+  # Security Group for EC2 instances (created in advance for future EC2 instances)
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F1000
+            reason: "This is a demo environment. In a production environment, you should explicitly define egress rules."
+    Properties:
+      GroupDescription: Security group for EC2 instances that need to access the RDS database
+      VpcId: !Ref VpcId
+      SecurityGroupIngress: []  # No inbound rules - SSM access only
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-ec2-sg
+
+  # Security Group for RDS
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F1000
+            reason: "This is a demo environment. In a production environment, you should explicitly define egress rules."
+    Properties:
+      GroupDescription: Security group for MySQL RDS
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref EC2SecurityGroup  # Allow access only from EC2 instances with this security group
+          Description: "Allow MySQL traffic from EC2 instances with the EC2SecurityGroup"
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-db-sg
+
+  # MySQL RDS Instance
+  MySQLDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete  # This database will be DELETED on stack destruction
+    UpdateReplacePolicy: Delete  # This database will be DELETED on replacement
+    # checkov:skip=CKV_AWS_161:This demo uses username/password authentication for RDS as a simple example of secrets a customer may have. In a production environment, IAM authentication should be used instead for better security.
+    # checkov:skip=CKV_AWS_118:This is a demo environment. Enhanced monitoring would add cost without providing value for this temporary deployment.
+    # checkov:skip=CKV_AWS_157:This is a demo environment. Multi-AZ would add cost without providing value for this temporary deployment. In production, Multi-AZ would be enabled for high availability.
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F24
+            reason: "This is a demo environment. In a production environment, you should use Secrets Manager or SSM Parameter Store."
+          - id: F80
+            reason: "This is a demo environment. In a production environment, you should enable deletion protection."
+          - id: CKV_AWS_161
+            reason: "This demo uses username/password authentication for RDS as a simple example of secrets a customer may have. In a production environment, IAM authentication should be used instead for better security."
+          - id: CKV_AWS_118
+            reason: "This is a demo environment. Enhanced monitoring would add cost without providing value for this temporary deployment."
+          - id: CKV_AWS_157
+            reason: "This is a demo environment. Multi-AZ would add cost without providing value for this temporary deployment. In production, Multi-AZ would be enabled for high availability."
+    Properties:
+      DBName: !Ref DBName
+      Engine: mysql
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: 20
+      StorageType: gp2
+      StorageEncrypted: true
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !GetAtt DBSecurityGroup.GroupId
+      BackupRetentionPeriod: 7
+      MultiAZ: false
+      PubliclyAccessible: false
+      AutoMinorVersionUpgrade: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-mysql
+
+
+Outputs:
+  DBEndpoint:
+    Description: Endpoint address of the MySQL database
+    Value: !GetAtt MySQLDatabase.Endpoint.Address
+
+  DBUsername:
+    Description: Username for database access
+    Value: !Ref DBUsername
+
+  DBName:
+    Description: Name of the database
+    Value: !Ref DBName
+
+  VPCID:
+    Description: ID of the VPC where resources are deployed
+    Value: !Ref VpcId
+
+
+  DBSecurityGroupID:
+    Description: ID of the database security group
+    Value: !GetAtt DBSecurityGroup.GroupId
+    
+  EC2SecurityGroupID:
+    Description: ID of the security group for EC2 instances that need to access the database
+    Value: !GetAtt EC2SecurityGroup.GroupId

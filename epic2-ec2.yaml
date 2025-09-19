@@ -1,0 +1,403 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'ISV Solution - EC2 instance with secure access to customer MySQL database. Template is designed for deployment in US regions.'
+
+Metadata:
+  cfn_nag:
+    rules_to_suppress:
+      - id: W77
+        reason: "This is a demo environment. In a production environment, you should specify a KMS key ID."
+      - id: F1000
+        reason: "This is a demo environment. In a production environment, you should explicitly define egress rules."
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - PublicSubnetId
+      - Label:
+          default: "Database Configuration"
+        Parameters:
+          - MySQLHost
+          - MySQLUsername
+          - MySQLPassword
+          - EC2SecurityGroupId
+      - Label:
+          default: "EC2 Instance Configuration"
+        Parameters:
+          - EC2InstanceName
+    ParameterLabels:
+      PublicSubnetId:
+        default: "Public Subnet for EC2 Deployment"
+      MySQLHost:
+        default: "MySQL Host"
+      MySQLUsername:
+        default: "MySQL Username"
+      MySQLPassword:
+        default: "MySQL Password"
+      EC2SecurityGroupId:
+        default: "EC2 Security Group ID from Epic 1"
+      EC2InstanceName:
+        default: "EC2 Instance Name"
+
+Parameters:
+  MySQLHost:
+    Type: String
+    Description: Hostname or IP address of the MySQL server (DBEndpoint from Epic 1)
+    NoEcho: true
+
+  MySQLUsername:
+    Type: String
+    Description: Username for MySQL connection (DBUsername from Epic 1)
+    NoEcho: true
+
+  MySQLPassword:
+    Type: String
+    Description: Password for MySQL connection
+    NoEcho: true
+
+  EC2SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group ID for EC2 instances (EC2SecurityGroupID from Epic 1)
+
+  EC2InstanceName:
+    Type: String
+    Default: ISV-Application
+    Description: Name for the EC2 instance
+
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Select a public subnet within VPC where you launched the database in Epic 1
+
+Resources:
+  # Create a secret in AWS Secrets Manager to store MySQL credentials
+  MySQLSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete  # This secret will be DELETED on stack destruction
+    UpdateReplacePolicy: Delete  # This secret will be DELETED on replacement
+    # checkov:skip=CKV_AWS_149:This is a demo environment. In a production environment, we would encrypt Secrets Manager secrets with a customer-managed KMS key (CMKs).
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: W77
+            reason: "This is a demo environment. In a production environment, we would specify a KMS key ID."
+          - id: CKV_AWS_149
+            reason: "This is a demo environment. In a production environment, we would encrypt Secrets Manager secrets with a customer-managed KMS key (CMKs)."
+    Properties:
+      Name: !Sub "${AWS::StackName}-mysql-credentials"
+      Description: "MySQL credentials for EC2 application"
+      SecretString: !Sub '{"host":"${MySQLHost}","username":"${MySQLUsername}","password":"${MySQLPassword}","port":"3306"}'
+
+  # IAM Role for EC2 instance to access Secrets Manager
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore  # For SSM access
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref MySQLSecret
+
+  # Instance Profile for EC2 instance
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+
+  # EC2 Instance
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    # checkov:skip=CKV_AWS_88:This demo uses an EC2 with a public IP for simplicity. In a production environment, EC2 instances should be placed in private subnets with NAT Gateway or VPC Endpoints for AWS service access.
+    # checkov:skip=CKV_SECRET_6:This warning is triggered by the Base64-encoded UserData script. 'High entropy' means the string appears random enough that it might be a secret or credential. However, this is a false positive because CloudFormation requires UserData to be Base64-encoded, and our script doesn't contain any hardcoded secrets.
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: CKV_AWS_88
+            reason: "This demo uses an EC2 with a public IP for simplicity. In a production environment, EC2 instances should be placed in private subnets with NAT Gateway or VPC Endpoints for AWS service access."
+          - id: CKV_SECRET_6
+            reason: "This warning is triggered by the Base64-encoded UserData script. 'High entropy' means the string appears random enough that it might be a secret or credential. However, this is a false positive because CloudFormation requires UserData to be Base64-encoded, and our script doesn't contain any hardcoded secrets."
+    Properties:
+      InstanceType: t3.small
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]  # Use region-specific AMI
+      EbsOptimized: true
+      Monitoring: true
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          GroupSet:
+            - !Ref EC2SecurityGroupId
+          SubnetId: !Ref PublicSubnetId
+      IamInstanceProfile: !Ref EC2InstanceProfile  # Attach the instance profile
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required  # Require IMDSv2
+        HttpPutResponseHopLimit: 1  # Restrict metadata service hop limit
+      UserData: 
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          
+          # Install Python3 and required packages
+          echo "Installing dependencies..."
+          sudo yum install python3 python3-pip -y
+          pip3 install boto3 mysql-connector-python
+
+          # Create the database connection test script
+          echo "Creating database connection test script..."
+          cat > /home/ec2-user/test-db-connection.py << 'EOFSCRIPT'
+          #!/usr/bin/env python3
+          import boto3
+          import json
+          import mysql.connector
+          import os
+          import time
+          import datetime
+          import sys
+
+          def get_secret():
+              """Get MySQL credentials from AWS Secrets Manager"""
+              result = {
+                  "success": False,
+                  "secret_name": "Unknown",
+                  "error": None
+              }
+              
+              try:
+                  # Get secret ARN from environment variable
+                  # checkov:skip=CKV_SECRET_6:This is a false positive. The environment variable name is not a secret.
+                  secret_arn = os.environ.get('MYSQL_SECRET_ARN')
+                  if not secret_arn:
+                      result["error"] = "MYSQL_SECRET_ARN environment variable not set"
+                      return result, None
+                  
+                  # Extract secret name and region from ARN
+                  # ARN format: arn:aws:secretsmanager:region:account:secret:name
+                  parts = secret_arn.split(':')
+                  if len(parts) >= 7:
+                      region_name = parts[3]  # Region is the 4th part (index 3)
+                      result["secret_name"] = parts[6]  # Secret name is the 7th part (index 6)
+                  else:
+                      result["error"] = "Invalid ARN format"
+                      return result, None
+                  
+                  # Create a Secrets Manager client
+                  session = boto3.session.Session()
+                  client = session.client(
+                      service_name='secretsmanager',
+                      region_name=region_name
+                  )
+                  
+                  # Get the secret value
+                  get_secret_value_response = client.get_secret_value(
+                      SecretId=secret_arn
+                  )
+                  secret = get_secret_value_response['SecretString']
+                  result["success"] = True
+                  
+                  return result, json.loads(secret)
+                  
+              except Exception as e:
+                  result["error"] = str(e)
+                  return result, None
+
+          def test_db_connection(secret_data):
+              """Test connection to MySQL database using credentials from secret"""
+              result = {
+                  "success": False,
+                  "error": None
+              }
+              
+              if not secret_data:
+                  result["error"] = "No secret data provided"
+                  return result
+              
+              try:
+                  # Extract connection parameters from secret
+                  host = secret_data.get('host')
+                  username = secret_data.get('username')
+                  password = secret_data.get('password')
+                  port = int(secret_data.get('port'))
+                  
+                  # Connect to the database
+                  conn = mysql.connector.connect(
+                      host=host,
+                      user=username,
+                      password=password,
+                      port=port,
+                      connect_timeout=5
+                  )
+                  
+                  # Close connection
+                  conn.close()
+                  result["success"] = True
+                  
+              except mysql.connector.Error as e:
+                  result["error"] = str(e)
+              
+              return result
+
+          def main():
+              """Main function to test database connection and write results to file"""
+              # Get current timestamp
+              timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+              
+              # Get secret from Secrets Manager
+              secret_result, secret_data = get_secret()
+              
+              # Test database connection if secret was retrieved successfully
+              if secret_result["success"]:
+                  db_result = test_db_connection(secret_data)
+              else:
+                  db_result = {
+                      "success": False,
+                      "error": "Failed to retrieve secret"
+                  }
+              
+              # Determine overall status
+              if secret_result["success"] and db_result["success"]:
+                  overall_status = "SUCCESS"
+              elif secret_result["success"]:
+                  overall_status = "SECRET_SUCCESS_DB_FAILURE"
+              else:
+                  overall_status = "SECRET_FAILURE"
+              
+              # Create narrative output
+              narrative = []
+              narrative.append("=" * 60)
+              narrative.append("📖 DATABASE CONNECTION STORY")
+              narrative.append("=" * 60)
+              narrative.append("")
+              
+              # Secret retrieval step
+              narrative.append(f"[{timestamp}] 🔑 Step 1: Retrieving database credentials")
+              if secret_result["success"]:
+                  narrative.append(f"✅ Successfully retrieved secret \"{secret_result['secret_name']}\"")
+                  narrative.append("│")
+                  narrative.append("▼")
+              else:
+                  narrative.append(f"❌ Failed to retrieve credentials: {secret_result['error']}")
+                  narrative.append("│")
+                  narrative.append("╳")
+              
+              # Database connection step
+              if secret_result["success"]:
+                  narrative.append(f"[{timestamp}] 🔌 Step 2: Connecting to database using \"{secret_result['secret_name']}\" credentials")
+              else:
+                  narrative.append(f"[{timestamp}] 🔌 Step 2: Connecting to database using credentials")
+              
+              if db_result["success"]:
+                  narrative.append(f"✅ Successfully connected to MySQL database")
+                  narrative.append("│")
+                  narrative.append("▼")
+              else:
+                  if secret_result["success"]:
+                      narrative.append(f"❌ Failed to connect to database: {db_result['error']}")
+                  else:
+                      narrative.append("❌ Cannot connect without credentials")
+                  narrative.append("│")
+                  narrative.append("╳")
+              
+              # Summary
+              narrative.append(f"[{timestamp}] 🏁 Summary")
+              if overall_status == "SUCCESS":
+                  narrative.append(f"✅ I used \"{secret_result['secret_name']}\" credentials to")
+                  narrative.append(f"   successfully connect to the MySQL database.")
+              elif overall_status == "SECRET_SUCCESS_DB_FAILURE":
+                  narrative.append(f"⚠️ I retrieved \"{secret_result['secret_name']}\" credentials but")
+                  narrative.append("   failed to connect to the database. Please check that the credentials are correct")
+                  narrative.append("   and that the security group allows access from this instance.")
+              else:
+                  narrative.append("❌ I failed to retrieve credentials from AWS Secrets Manager.")
+                  narrative.append("   Please check that the secret exists and the instance has permission to access it.")
+              
+              narrative.append("")
+              narrative.append("=" * 60)
+              
+              # Join the narrative lines for output
+              narrative_text = "\n".join(narrative)
+              
+              # Write narrative to file
+              with open('/home/ec2-user/db-connection-story.txt', 'w') as f:
+                  f.write(narrative_text)
+              
+              # Print narrative to console
+              print(narrative_text)
+              
+              # Return exit code based on success/failure
+              if overall_status == "SUCCESS":
+                  return 0
+              else:
+                  return 1
+
+          if __name__ == "__main__":
+              sys.exit(main())
+          EOFSCRIPT
+
+          # Make the script executable
+          chmod +x /home/ec2-user/test-db-connection.py
+          
+          # Set ownership
+          chown ec2-user:ec2-user /home/ec2-user/test-db-connection.py
+          
+          # Add a delay to ensure AWS resources are fully available
+          echo "Waiting for AWS resources to be fully available..."
+          sleep 30
+          
+          # Add environment variable to /etc/environment (affects all users)
+          echo "Adding environment variable to /etc/environment..."
+          echo "MYSQL_SECRET_ARN=${MySQLSecret}" >> /etc/environment
+          
+          # Run the script once to generate the initial status file
+          echo "Running initial database connection test..."
+          sudo -u ec2-user MYSQL_SECRET_ARN="${MySQLSecret}" /home/ec2-user/test-db-connection.py
+
+          echo "Setup complete!"
+
+      Tags:
+        - Key: Name
+          Value: !Ref EC2InstanceName
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-0e731c8a588258d0d  # Amazon Linux 2023 in us-east-1
+    us-east-2:
+      AMI: ami-0c20d96b50ac7bae0  # Amazon Linux 2023 in us-east-2
+    us-west-1:
+      AMI: ami-0ce2cb35386fc22e9  # Amazon Linux 2023 in us-west-1
+    us-west-2:
+      AMI: ami-07c5ecd8498c59db5  # Amazon Linux 2023 in us-west-2
+    eu-west-1:
+      AMI: ami-0694d931cee176e7d  # Amazon Linux 2023 in eu-west-1
+    eu-central-1:
+      AMI: ami-0faab6bdbac9486fb  # Amazon Linux 2023 in eu-central-1
+    ap-northeast-1:
+      AMI: ami-0b7546e839d7ace12  # Amazon Linux 2023 in ap-northeast-1
+    ap-southeast-1:
+      AMI: ami-0b825ad86ddcfb907  # Amazon Linux 2023 in ap-southeast-1
+    ap-southeast-2:
+      AMI: ami-0a709bebf4fa9246f  # Amazon Linux 2023 in ap-southeast-2
+
+Outputs:
+  InstanceId:
+    Description: ID of the EC2 instance
+    Value: !Ref EC2Instance
+  SSMAccess:
+    Description: Command to access the EC2 instance via SSM Session Manager
+    Value: !Sub "aws ssm start-session --target ${EC2Instance}"
+  MySQLSecretARN:
+    Description: ARN of the MySQL credentials secret
+    Value: !Ref MySQLSecret
