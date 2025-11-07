@@ -26,9 +26,9 @@ Metadata:
           - DBPassword
     ParameterLabels:
       VpcId:
-        default: "Which VPC should this be deployed to?"
+        default: "VPC ID"
       PrivateSubnetIds:
-        default: "Select two private subnets from the VPC you chose for RDS deployment"
+        default: "Private Subnet IDs"
       DBName:
         default: "Database Name"
       DBUsername:
