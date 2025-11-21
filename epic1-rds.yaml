@@ -81,6 +81,8 @@ Resources:
       SubnetIds: !Ref PrivateSubnetIds
 
   # Security Group for EC2 instances (created in advance for future EC2 instances)
+  # This security group does not allow any inbound traffic. The only way to access the instance is through AWS Systems Manager.
+  # The outbound rules allow HTTPS (443) for AWS API calls and MySQL (3306) to RDS security group.
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Metadata:
@@ -97,6 +99,8 @@ Resources:
           Value: !Sub ${AWS::StackName}-ec2-sg
 
   # Security Group for RDS
+  # This security group only allows inbound traffic on port 3306 from the security group of the ISV EC2 instance.
+  # Both the database and security group do not allow public access. This follows the AWS best practices for database isolation.
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Metadata:

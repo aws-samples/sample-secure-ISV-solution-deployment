@@ -27,7 +27,7 @@ Metadata:
           - EC2InstanceName
     ParameterLabels:
       PublicSubnetId:
-        default: "Public Subnet for EC2 Deployment"
+        default: "Public Subnet ID"
       MySQLHost:
         default: "MySQL Host"
       MySQLUsername:
@@ -35,7 +35,7 @@ Metadata:
       MySQLPassword:
         default: "MySQL Password"
       EC2SecurityGroupId:
-        default: "EC2 Security Group ID from Epic 1"
+        default: "EC2 Security Group ID"
       EC2InstanceName:
         default: "EC2 Instance Name"
 
