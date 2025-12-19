@@ -42,16 +42,16 @@ We assume the customer has an existing VPC with both public and private subnets.
 
 The deployment is organized into three epics, each with detailed instructions:
 
-- **Epic 1**: Set up the customer environment ([epic1.md](epics/epic1.md))
+- **Epic 1**: Set up the customer environment ([epic1.md](epic1.md))
   - Deploy a MySQL RDS database in private subnets
-  - CloudFormation template: [epic1-rds.yaml](epics/epic1-rds.yaml)
+  - CloudFormation template: [epic1-rds.yaml](epic1-rds.yaml)
 
-- **Epic 2**: Deploy the ISV solution ([epic2.md](epics/epic2.md))
+- **Epic 2**: Deploy the ISV solution ([epic2.md](epic2.md))
   - Deploy an EC2 instance with ISV application
   - Configure secure access to the customer's database
-  - CloudFormation template: [epic2-ec2.yaml](epics/epic2-ec2.yaml)
+  - CloudFormation template: [epic2-ec2.yaml](epic2-ec2.yaml)
 
-- **Epic 3**: Clean up resources ([epic3.md](epics/epic3.md))
+- **Epic 3**: Clean up resources ([epic3.md](epic3.md))
   - Instructions for removing all created resources
 
 ## Deployment Instructions
