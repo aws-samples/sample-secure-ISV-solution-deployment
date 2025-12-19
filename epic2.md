@@ -9,6 +9,8 @@
 
 ## Story 1: Review and understand the ISV CloudFormation template
 
+This procedure helps you understand the key components of the ISV CloudFormation template before deployment. Reviewing the template will give you insight into how the solution securely handles database credentials and connects to your existing resources.
+
 1. Open the `epic2-ec2.yaml` file in a text editor.
 2. Review the following key sections:
    - **Parameters**: Note how the template accepts database connection parameters from the customer
@@ -146,6 +148,8 @@
 
 ## Story 2: Deploy the ISV solution
 
+This procedure deploys the ISV solution using CloudFormation. Before starting, ensure you have completed Epic 1 and have the database connection information available.
+
 1. In the CloudFormation console.
 2. In the navigation pane, choose **Stacks**.
 3. Choose **Create stack**, and then choose **With new resources (standard)**.
@@ -170,13 +174,15 @@
 
 ## Story 3: Verify the deployment and test connectivity
 
+This procedure helps you verify that the ISV solution has been deployed correctly and can connect to your database. You'll use AWS Systems Manager Session Manager to access the EC2 instance and check the database connection.
+
 1. Once the stack creation is complete, go to the **Outputs** tab of your stack.
 2. Note the following information:
    - **InstanceId**: The ID of the EC2 instance
    - **MySQLSecretARN**: The ARN of the secret created in AWS Secrets Manager
 
 3. To access the EC2 instance and verify database connectivity:
-   - Navigate to the AWS Systems Manager console
+   - In the AWS Console, search for and choose **Systems Manager**
    - In the navigation pane, choose **Session Manager**
    - Choose **Start session**
    - Select the EC2 instance you just created (you can find it by the instance ID from the outputs)
@@ -185,21 +191,25 @@
 4. Once connected to the instance via Session Manager, you need to switch to the ec2-user to access the test files:
    ```
    sudo su ec2-user
+   ```
+
+5. Move to the home directory and view the solutions files:
+  ```
    cd ~
    ls
    ```
 
-5. You should see the database connection test results file db-connection-story.txt and the Python test script created by the user data test-db-connection.py. View the result of the connection test with:
+6. You should see the database connection test results file db-connection-story.txt and the Python test script created by the user data test-db-connection.py. View the result of the connection test with:
    ```
    cat db-connection-story.txt
    ```
 
-6. The output will show a narrative of the connection attempt:
+7. The output will show a narrative of the connection attempt:
    - If the connection is successful, you'll see a success message indicating which secret was used to connect to the database
    - If the connection failed, you'll see an error message with details about what went wrong
    - The narrative includes steps showing the secret retrieval and database connection attempt
 
-7. To verify the secure credential handling:
+8. To verify the secure credential handling:
    - Open the AWS Secrets Manager console
    - Find the secret created by the stack (you can use the MySQLSecretARN from the outputs)
    - Note that you can view the secret values, but the EC2 instance retrieves them securely without storing them in plain text
@@ -208,7 +218,7 @@
      python3 ~/test-db-connection.py
      ```
 
-8. This demonstrates the complete pattern:
+9.  This demonstrates the complete pattern:
    - The ISV provided a solution template
    - You deployed it with your own database credentials
    - The credentials are stored securely in Secrets Manager

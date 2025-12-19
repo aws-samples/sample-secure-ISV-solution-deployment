@@ -1,13 +1,16 @@
 # Epic 1: Set up the customer environment
 
-**Important Note:** This part of the setup represents the customer's existing environment. In a real-world scenario, customers would already have their database and network infrastructure in place. We're creating these resources for demonstration purposes only.
+This part of the setup represents the customer's existing environment. In a real-world scenario, customers would already have their database and network infrastructure in place. We're creating these resources for demonstration purposes only.
 
-**Resources Created:**
+Resources Created:
 - MySQL RDS database instance in a private subnet
-- EC2 security group for database access
+- Security group for future ISV EC2 instances
+- Security group for RDS which allows access from the ISV EC2 security group
 - Necessary IAM roles and permissions
 
 ## Story 1: Deploy a sample RDS database stack
+
+This procedure creates a MySQL RDS database instance in a private subnet using CloudFormation. You'll need to have a VPC with both public and private subnets available before starting this procedure.
 
 1. Sign in to the AWS Management Console.
 2. Open the CloudFormation console.
@@ -30,6 +33,8 @@
 
 ## Story 2: Note the connection information for your database
 
+This procedure helps you collect and store the database connection information that you'll need when deploying the ISV solution in Epic 2. You should complete this procedure after successfully deploying the RDS database stack.
+
 1. Once the stack creation is complete, go to the **Outputs** tab of your stack.
 2. Note the following important information that you'll need for deploying the ISV solution:
    - **DBEndpoint**: The endpoint address of your MySQL database
@@ -40,3 +45,5 @@
 
    **Note**: For security reasons, the database password is not included in the outputs. You should use the password you specified during creation.
 3. Create a new text file to store this information securely, as you'll need it when deploying the ISV solution in Epic 2.
+
+

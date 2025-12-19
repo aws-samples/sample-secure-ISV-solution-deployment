@@ -1,6 +1,7 @@
 # Secure ISV Solution Deployment in Customer AWS Accounts
 
 ## Overview
+Independent Software Vendors (ISVs) develop solutions for end customers which are sometimes launched in customer Amazon Web Services (AWS) accounts. Usually, the ISV will work with their customer to deploy the solution. However, in regulated industries, customer requirements may prevent the ISV from having any access to the customer environment, configuration information, and secrets.
 
 This solution demonstrates a secure pattern for ISV (Independent Software Vendor) solutions to integrate with customer resources in AWS without requiring access to sensitive customer credentials. Using AWS CloudFormation, the customer can deploy the ISV's application while maintaining control over their credentials and resources. The solution leverages AWS Secrets Manager to securely store and retrieve database credentials, allowing the ISV application to connect to the customer's database without the ISV ever seeing the credentials.
 
@@ -21,13 +22,13 @@ We assume the customer has an existing VPC with both public and private subnets.
 ### Prerequisites
 
 * AWS Account
-* Amazon VPC with public and private subnets
+* Amazon VPC with at least one public and two private subnets
 * Basic understanding of AWS CloudFormation, Amazon EC2, AWS IAM, AWS Secrets Manager, and Amazon RDS
-* AWS IAM credentials with sufficient access to deploy the listed services
+* AWS IAM admin role or role which has full access to the listed services
 
 ### Limitations
 
-* Demo solution is designed for launch in US AWS regions.
+* The demo solution is designed to be launched in us-east-1 (N. Virginia), us-east-2 (Ohio), us-west-1 (N. California), and us-west-2 (Oregon).
 
 ## Target technology stack
 
@@ -46,7 +47,7 @@ The deployment is organized into three epics, each with detailed instructions:
   - CloudFormation template: [epic1-rds.yaml](epics/epic1-rds.yaml)
 
 - **Epic 2**: Deploy the ISV solution ([epic2.md](epics/epic2.md))
-  - Deploy an EC2 instance with a web application
+  - Deploy an EC2 instance with ISV application
   - Configure secure access to the customer's database
   - CloudFormation template: [epic2-ec2.yaml](epics/epic2-ec2.yaml)
 
