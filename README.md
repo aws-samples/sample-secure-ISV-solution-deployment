@@ -58,9 +58,9 @@ The deployment is organized into three epics, each with detailed instructions:
 
 Follow the detailed instructions in each epic file:
 
-1. First, follow [epic1.md](epics/epic1.md) to set up the customer environment
-2. Then, follow [epic2.md](epics/epic2.md) to deploy the ISV solution
-3. When finished, follow [epic3.md](epics/epic3.md) to clean up all resources
+1. First, follow [epic1.md](epic1.md) to set up the customer environment
+2. Then, follow [epic2.md](epic2.md) to deploy the ISV solution
+3. When finished, follow [epic3.md](epic3.md) to clean up all resources
 
 ## Security
 
